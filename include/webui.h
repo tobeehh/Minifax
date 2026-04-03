@@ -64,7 +64,7 @@ namespace WebUI {
     // ============================================
     // HTML Seite generieren
     // ============================================
-    String buildPage() {
+    String buildPage(const String& replyTo = "") {
         unsigned long uptimeSec = millis() / 1000;
         unsigned long h = uptimeSec / 3600;
         unsigned long m = (uptimeSec % 3600) / 60;
@@ -119,17 +119,16 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
         html += "<div class=\"status-item\"><span class=\"label\">WLAN</span><span class=\"value\">" + WiFi.localIP().toString() + "</span></div>";
         html += "</div></div>";
 
-        // SMS Senden
-        html += R"rawhtml(
-<div class="card">
-<h2>SMS SENDEN</h2>
-<form class="sms-form" method="POST" action="/send">
-<input type="text" name="number" placeholder="+49171..." required>
-<textarea name="text" placeholder="Nachricht..." required></textarea>
-<button type="submit">SENDEN</button>
-</form>
-</div>
-)rawhtml";
+        // SMS Senden (mit optionaler vorausgefuellter Nummer via QR-Code)
+        html += "<div class=\"card\"><h2>SMS SENDEN</h2>";
+        html += "<form class=\"sms-form\" method=\"POST\" action=\"/send\">";
+        html += "<input type=\"text\" name=\"number\" placeholder=\"+49171...\" value=\""
+              + htmlEscape(replyTo) + "\" required>";
+        html += "<textarea name=\"text\" placeholder=\"Nachricht...\" required></textarea>";
+        if (replyTo.length() > 0) {
+            html += "<div style=\"color:#00ff88;font-size:.8em;margin-top:4px\">Antwort an " + htmlEscape(replyTo) + "</div>";
+        }
+        html += "<button type=\"submit\">SENDEN</button></form></div>";
 
         // SMS Verlauf
         html += "<div class=\"card\"><h2>EMPFANGEN<span class=\"badge\">" + String(SmsHistory::count()) + "</span></h2>";
@@ -166,7 +165,11 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
     // Route Handlers
     // ============================================
     void handleRoot() {
-        server.send(200, "text/html", buildPage());
+        String replyTo = "";
+        if (server.hasArg("reply")) {
+            replyTo = server.arg("reply");
+        }
+        server.send(200, "text/html", buildPage(replyTo));
     }
 
     void handleSend() {

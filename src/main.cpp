@@ -193,10 +193,97 @@ namespace Printer {
         feed(1);
     }
 
+    // QR-Code drucken via ESC/POS nativer QR-Funktion
+    // Funktioniert mit den meisten 58mm Thermodruckern
+    void printQR(const char* data) {
+        uint16_t len = strlen(data);
+
+        setAlign(1); // zentriert
+
+        // GS ( k - QR Code Befehle
+
+        // 1. QR Model setzen (Model 2)
+        printerSerial.write(0x1D);  // GS
+        printerSerial.write('(');
+        printerSerial.write('k');
+        printerSerial.write((uint8_t)4);  // pL
+        printerSerial.write((uint8_t)0);  // pH
+        printerSerial.write((uint8_t)49); // cn
+        printerSerial.write((uint8_t)65); // fn (Model)
+        printerSerial.write((uint8_t)50); // Model 2
+        printerSerial.write((uint8_t)0);
+
+        // 2. Modulgrösse (3 Pixel pro Modul - gut lesbar auf 58mm)
+        printerSerial.write(0x1D);
+        printerSerial.write('(');
+        printerSerial.write('k');
+        printerSerial.write((uint8_t)3);
+        printerSerial.write((uint8_t)0);
+        printerSerial.write((uint8_t)49);
+        printerSerial.write((uint8_t)67); // fn (Size)
+        printerSerial.write((uint8_t)4);  // Modulgrösse 4
+
+        // 3. Fehlerkorrektur (Level M - 15%)
+        printerSerial.write(0x1D);
+        printerSerial.write('(');
+        printerSerial.write('k');
+        printerSerial.write((uint8_t)3);
+        printerSerial.write((uint8_t)0);
+        printerSerial.write((uint8_t)49);
+        printerSerial.write((uint8_t)69); // fn (Error correction)
+        printerSerial.write((uint8_t)49); // Level M
+
+        // 4. Daten in den QR-Buffer schreiben
+        uint16_t storeLen = len + 3;
+        printerSerial.write(0x1D);
+        printerSerial.write('(');
+        printerSerial.write('k');
+        printerSerial.write((uint8_t)(storeLen & 0xFF));        // pL
+        printerSerial.write((uint8_t)((storeLen >> 8) & 0xFF)); // pH
+        printerSerial.write((uint8_t)49);  // cn
+        printerSerial.write((uint8_t)80);  // fn (Store data)
+        printerSerial.write((uint8_t)48);  // m
+        printerSerial.write(data, len);
+
+        // 5. QR-Code drucken
+        printerSerial.write(0x1D);
+        printerSerial.write('(');
+        printerSerial.write('k');
+        printerSerial.write((uint8_t)3);
+        printerSerial.write((uint8_t)0);
+        printerSerial.write((uint8_t)49);
+        printerSerial.write((uint8_t)81); // fn (Print)
+        printerSerial.write((uint8_t)48);
+
+        delay(500); // QR-Rendering braucht etwas
+
+        setAlign(0); // zurueck auf links
+    }
+
+    // URL fuer Antwort-Link generieren (WebUI mit vorausgefuellter Nummer)
+    String replyUrl(const char* sender) {
+        if (WiFi.status() != WL_CONNECTED) return "";
+        String url = "http://" + WiFi.localIP().toString()
+                   + "/?reply=" + String(sender);
+        return url;
+    }
+
     void printMessage(const char* sender, const char* timestamp, const char* message) {
         printHeader(sender, timestamp);
         printLine(message);
         feed(1);
+
+        // QR-Code mit Antwort-Link (nur wenn WLAN verbunden)
+        String url = replyUrl(sender);
+        if (url.length() > 0) {
+            printSeparator();
+            feed(1);
+            setAlign(1);
+            printLine("Antworten:");
+            printQR(url.c_str());
+            feed(1);
+        }
+
         printSeparator();
         feed(3); // Genug Papier zum Abreissen
     }
