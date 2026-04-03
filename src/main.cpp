@@ -23,6 +23,7 @@
 #include <HardwareSerial.h>
 #include <WiFi.h>
 #include "config.h"
+#include "settings.h"
 #include "sms_storage.h"
 #include "oled_display.h"
 #include "ota_update.h"
@@ -180,7 +181,7 @@ namespace Printer {
         feed(1);
         setAlign(1); // zentriert
         setDoubleHeight(true);
-        printLine("MINIFAX");
+        printLine(Settings::deviceName.c_str());
         setDoubleHeight(false);
         setAlign(0); // links
         feed(1);
@@ -276,9 +277,9 @@ namespace Printer {
         printLine(message);
         feed(1);
 
-        // QR-Code mit Antwort-Link (nur wenn WLAN verbunden)
+        // QR-Code mit Antwort-Link (nur wenn WLAN verbunden + aktiviert)
         String url = replyUrl(sender);
-        if (url.length() > 0) {
+        if (url.length() > 0 && Settings::printQrCode) {
             printSeparator();
             feed(1);
             setAlign(1);
@@ -699,9 +700,13 @@ void setup() {
     // OLED Display initialisieren
     OledDisplay::init();
 
-    // SPIFFS + SMS-Verlauf laden
+    // SPIFFS + Einstellungen + SMS-Verlauf laden
     SmsHistory::initStorage();
+    Settings::load();
     SmsHistory::loadFromStorage();
+
+    Serial.print("[MINIFAX] GSM-Modul: ");
+    Serial.println(Settings::gsmModuleName());
 
     // Drucker initialisieren
     Serial.println("[PRINTER] Initialisiere Thermodrucker...");
@@ -774,18 +779,24 @@ void handleReceivedSMS() {
     OledDisplay::smsCount = SmsHistory::totalCount;
     OledDisplay::showReceiving(SMSParser::currentSender.c_str());
 
-    // Fax-Empfangssequenz abspielen!
-    FaxSound::receiveSequence();
+    // Fax-Empfangssequenz abspielen (wenn aktiviert)
+    if (Settings::faxSoundEnabled) {
+        FaxSound::receiveSequence();
+    }
 
-    // SMS drucken!
-    Printer::printMessage(
-        SMSParser::currentSender.c_str(),
-        SMSParser::currentTimestamp.c_str(),
-        SMSParser::currentMessage.c_str()
-    );
+    // SMS drucken (wenn Auto-Druck aktiviert)
+    if (Settings::autoPrint) {
+        Printer::printMessage(
+            SMSParser::currentSender.c_str(),
+            SMSParser::currentTimestamp.c_str(),
+            SMSParser::currentMessage.c_str()
+        );
+    }
 
     // Bestaetigungston
-    FaxSound::confirmTone();
+    if (Settings::faxSoundEnabled) {
+        FaxSound::confirmTone();
+    }
     StatusLED::flashFast(3);
 }
 
