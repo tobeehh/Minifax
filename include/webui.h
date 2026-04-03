@@ -19,6 +19,7 @@ namespace WebUI {
     // Forward declarations - werden von main.cpp gesetzt
     void (*onSendSms)(const String& number, const String& text) = nullptr;
     void (*onGuestbookEntry)(const String& name, const String& message) = nullptr;
+    void (*onImageUpload)(const uint8_t* data, int len) = nullptr;
 
     // HTML escapen gegen XSS
     String htmlEscape(const String& text) {
@@ -117,6 +118,18 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
             html += "<div style=\"color:#00ff88;font-size:.8em;margin-top:4px\">Antwort an " + htmlEscape(replyTo) + "</div>";
         }
         html += "<button type=\"submit\">SENDEN</button></form></div>";
+
+        // Bild drucken
+        html += R"rawhtml(
+<div class="card">
+<h2>BILD DRUCKEN</h2>
+<form class="sms-form" method="POST" action="/upload" enctype="multipart/form-data">
+<input type="file" name="image" accept="image/bmp" style="width:100%;background:#0a0a1a;color:#e0e0e0;border:1px solid #0f3460;border-radius:4px;padding:8px;font-family:inherit;margin-bottom:8px">
+<button type="submit">DRUCKEN</button>
+</form>
+<p style="color:#666;font-size:.75em;margin-top:6px">BMP-Format (24-bit). Wird automatisch auf 384px Breite skaliert und als Schwarz-Weiss Dithering gedruckt.</p>
+</div>
+)rawhtml";
 
         // SMS Verlauf
         html += "<div class=\"card\"><h2>EMPFANGEN<span class=\"badge\">" + String(SmsHistory::count()) + "</span></h2>";
@@ -398,6 +411,51 @@ h1{text-align:center;font-size:2.2em;letter-spacing:6px;color:#fff;text-shadow:0
         server.send(200, "text/html", buildSettingsPage(true));
     }
 
+    // Bild-Upload Buffer
+    uint8_t* uploadBuffer = nullptr;
+    int uploadBufferLen = 0;
+    int uploadBufferSize = 0;
+
+    void handleUploadData() {
+        HTTPUpload& upload = server.upload();
+
+        if (upload.status == UPLOAD_FILE_START) {
+            Serial.println("[IMG] Upload Start: " + upload.filename);
+            // Max 100KB
+            uploadBufferSize = 100000;
+            uploadBuffer = (uint8_t*)malloc(uploadBufferSize);
+            uploadBufferLen = 0;
+            if (!uploadBuffer) {
+                Serial.println("[IMG] Nicht genug RAM fuer Upload");
+                uploadBufferSize = 0;
+            }
+        } else if (upload.status == UPLOAD_FILE_WRITE) {
+            if (uploadBuffer && uploadBufferLen + upload.currentSize <= uploadBufferSize) {
+                memcpy(uploadBuffer + uploadBufferLen, upload.buf, upload.currentSize);
+                uploadBufferLen += upload.currentSize;
+            }
+        } else if (upload.status == UPLOAD_FILE_END) {
+            Serial.printf("[IMG] Upload fertig: %d Bytes\n", uploadBufferLen);
+        }
+    }
+
+    void handleUploadDone() {
+        if (uploadBuffer && uploadBufferLen > 0 && onImageUpload) {
+            onImageUpload(uploadBuffer, uploadBufferLen);
+            server.sendHeader("Location", "/");
+            server.send(303);
+        } else {
+            server.send(400, "text/plain", "Upload fehlgeschlagen");
+        }
+
+        if (uploadBuffer) {
+            free(uploadBuffer);
+            uploadBuffer = nullptr;
+            uploadBufferLen = 0;
+            uploadBufferSize = 0;
+        }
+    }
+
     void handleGuestbookGet() {
         if (!Settings::guestbookMode) {
             server.sendHeader("Location", "/");
@@ -488,6 +546,7 @@ h1{text-align:center;font-size:2.2em;letter-spacing:6px;color:#fff;text-shadow:0
             server.on("/settings", HTTP_GET, handleSettingsGet);
             server.on("/settings", HTTP_POST, handleSettingsPost);
             server.on("/wifi-reset", HTTP_POST, handleWifiReset);
+            server.on("/upload", HTTP_POST, handleUploadDone, handleUploadData);
             server.on("/guestbook", HTTP_GET, handleGuestbookGet);
             server.on("/guestbook", HTTP_POST, handleGuestbookPost);
             server.onNotFound(handleNotFound);

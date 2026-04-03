@@ -27,6 +27,8 @@
 #include "sms_storage.h"
 #include "oled_display.h"
 #include "ota_update.h"
+#include "emoji_replace.h"
+#include "image_print.h"
 #include "webui.h"
 
 // ============================================
@@ -724,6 +726,7 @@ void setup() {
         // WebUI starten (WiFiManager)
         WebUI::onSendSms = webSendSms;
         WebUI::onGuestbookEntry = handleGuestbookEntry;
+        WebUI::onImageUpload = handleImageUpload;
         WebUI::onConfigPortalStarted = [](const char* apName) {
             OledDisplay::showConfigPortal(apName);
         };
@@ -748,6 +751,42 @@ void setup() {
             StatusLED::flashFast(10);
             delay(1000);
         }
+    }
+}
+
+// Bild-Upload drucken
+void handleImageUpload(const uint8_t* data, int len) {
+    Serial.printf("[IMG] Bild empfangen: %d Bytes\n", len);
+
+    if (Settings::faxSoundEnabled) {
+        FaxSound::receiveSequence();
+    }
+
+    Printer::feed(1);
+    Printer::setAlign(1);
+    Printer::setDoubleHeight(true);
+    Printer::printLine(Settings::deviceName.c_str());
+    Printer::setDoubleHeight(false);
+    Printer::setAlign(0);
+    Printer::printSeparator();
+    Printer::feed(1);
+
+    bool ok = ImagePrint::printBMPData(printerSerial, data, len);
+
+    if (ok) {
+        Printer::feed(1);
+        Printer::printSeparator();
+        Printer::feed(3);
+        if (Settings::faxSoundEnabled) {
+            FaxSound::confirmTone();
+        }
+        Serial.println("[IMG] Bild gedruckt!");
+    } else {
+        Printer::printLine("Fehler: Bild konnte nicht");
+        Printer::printLine("gedruckt werden.");
+        Printer::feed(3);
+        FaxSound::errorTone();
+        Serial.println("[IMG] Bild drucken fehlgeschlagen");
     }
 }
 
@@ -784,7 +823,8 @@ void handleGuestbookEntry(const String& name, const String& message) {
 
     Printer::printSeparator();
     Printer::feed(1);
-    Printer::printLine(message.c_str());
+    String printMsg = EmojiReplace::process(message);
+    Printer::printLine(printMsg.c_str());
     Printer::feed(1);
     Printer::printSeparator();
 
@@ -850,10 +890,12 @@ void handleReceivedSMS() {
 
     // SMS drucken (wenn Auto-Druck aktiviert)
     if (Settings::autoPrint) {
+        // Emojis durch ASCII ersetzen fuer den Druck
+        String printText = EmojiReplace::process(SMSParser::currentMessage);
         Printer::printMessage(
             SMSParser::currentSender.c_str(),
             SMSParser::currentTimestamp.c_str(),
-            SMSParser::currentMessage.c_str()
+            printText.c_str()
         );
     }
 
