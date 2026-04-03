@@ -127,6 +127,14 @@ namespace Printer {
         printerSerial.write(0x1B);
         printerSerial.write('@');
         delay(100);
+
+        // Code Page auf WPC1252 (Windows Latin-1) setzen
+        // damit Umlaute (aeoeue) korrekt gedruckt werden
+        // ESC t n -> Zeichentabelle waehlen
+        printerSerial.write(0x1B);
+        printerSerial.write('t');
+        printerSerial.write((uint8_t)16); // 16 = WPC1252
+        delay(50);
     }
 
     void setBold(bool on) {
@@ -307,49 +315,197 @@ namespace GSM {
 }
 
 // ============================================
-// SMS Parser
+// GSM Charset Konvertierung
+// ============================================
+namespace CharsetConvert {
+    // GSM 7-bit Default Alphabet -> ASCII/Latin-1
+    // Konvertiert GSM-spezifische Zeichen (Umlaute etc.)
+    // GSM charset hat Sonderzeichen an anderen Positionen als ASCII
+
+    // GSM Extension Table (nach ESC 0x1B)
+    // z.B. ESC + 0x65 = Euro-Zeichen
+
+    String gsmToLatin(const String& gsm) {
+        String result = "";
+        result.reserve(gsm.length());
+
+        for (unsigned int i = 0; i < gsm.length(); i++) {
+            uint8_t c = (uint8_t)gsm[i];
+
+            switch (c) {
+                // GSM Default Alphabet Sonderzeichen
+                case 0x00: result += '@'; break;
+                case 0x01: result += '\xa3'; break; // Pfund
+                case 0x02: result += '$'; break;
+                case 0x03: result += '\xa5'; break; // Yen
+                case 0x04: result += '\xe8'; break; // e grave
+                case 0x05: result += '\xe9'; break; // e acute
+                case 0x06: result += '\xf9'; break; // u grave
+                case 0x07: result += '\xec'; break; // i grave
+                case 0x08: result += '\xf2'; break; // o grave
+                case 0x09: result += '\xc7'; break; // C cedilla
+                case 0x0B: result += '\xd8'; break; // O stroke
+                case 0x0C: result += '\xf8'; break; // o stroke
+                case 0x0E: result += '\xc5'; break; // A ring
+                case 0x0F: result += '\xe5'; break; // a ring
+                case 0x10: result += '\x44'; break; // Delta -> D
+                case 0x11: result += '_'; break;
+                case 0x12: result += '\x46'; break; // Phi -> F
+                case 0x13: result += '\x47'; break; // Gamma -> G
+                case 0x14: result += '\x4c'; break; // Lambda -> L
+                case 0x15: result += '\x4f'; break; // Omega -> O
+                case 0x16: result += '\x50'; break; // Pi -> P
+                case 0x17: result += '\x50'; break; // Psi -> P
+                case 0x18: result += '\x53'; break; // Sigma -> S
+                case 0x19: result += '\x54'; break; // Theta -> T
+                case 0x1A: result += '\x58'; break; // Xi -> X
+
+                // Deutsche Umlaute im GSM Charset!
+                case 0x5B: result += '\xc4'; break; // Ae -> Ä (Latin-1)
+                case 0x5C: result += '\xd6'; break; // Oe -> Ö
+                case 0x5D: result += '\xd1'; break; // N tilde
+                case 0x5E: result += '\xdc'; break; // Ue -> Ü
+                case 0x5F: result += '\xa7'; break; // Paragraph
+                case 0x60: result += '\xbf'; break; // inverted ?
+                case 0x7B: result += '\xe4'; break; // ae -> ä
+                case 0x7C: result += '\xf6'; break; // oe -> ö
+                case 0x7D: result += '\xf1'; break; // n tilde
+                case 0x7E: result += '\xfc'; break; // ue -> ü
+                case 0x7F: result += '\xe0'; break; // a grave
+
+                // ESC-Sequenzen (Extension Table)
+                case 0x1B:
+                    if (i + 1 < gsm.length()) {
+                        i++;
+                        uint8_t ext = (uint8_t)gsm[i];
+                        switch (ext) {
+                            case 0x65: result += '\x80'; break; // Euro
+                            case 0x14: result += '^'; break;
+                            case 0x28: result += '{'; break;
+                            case 0x29: result += '}'; break;
+                            case 0x2F: result += '\\'; break;
+                            case 0x3C: result += '['; break;
+                            case 0x3D: result += '~'; break;
+                            case 0x3E: result += ']'; break;
+                            case 0x40: result += '|'; break;
+                            default:   result += '?'; break;
+                        }
+                    }
+                    break;
+
+                // eszett (scharfes S) - im GSM Charset an Position 0x1E
+                case 0x1E: result += '\xdf'; break; // ss -> ß
+
+                default:
+                    // Standard-ASCII Zeichen bleiben gleich
+                    result += (char)c;
+                    break;
+            }
+        }
+        return result;
+    }
+
+    // Fuer den Textmodus: SIM800L gibt im Textmodus oft
+    // schon die richtigen Zeichen aus, aber mit GSM-Charset
+    // Mapping. Diese Funktion handelt beide Faelle.
+    String convertSmsText(const String& text) {
+        // Pruefen ob der Text GSM-kodierte Sonderzeichen enthaelt
+        bool hasGsmSpecialChars = false;
+        for (unsigned int i = 0; i < text.length(); i++) {
+            uint8_t c = (uint8_t)text[i];
+            if (c == 0x5B || c == 0x5C || c == 0x5E ||  // AeOeUe
+                c == 0x7B || c == 0x7C || c == 0x7E ||  // aeoeue
+                c == 0x1E) {                             // sz
+                hasGsmSpecialChars = true;
+                break;
+            }
+        }
+
+        if (hasGsmSpecialChars) {
+            return gsmToLatin(text);
+        }
+
+        // Text ist vermutlich schon in ASCII/UTF-8, durchreichen
+        return text;
+    }
+}
+
+// ============================================
+// SMS Parser (mehrzeilig)
 // ============================================
 namespace SMSParser {
     // +CMT: "+491234567890","","26/04/03,12:00:00+08"
-    // Nachrichtentext hier
+    // Zeile 1
+    // Zeile 2
+    // ...
 
     String currentSender = "";
     String currentTimestamp = "";
     String currentMessage = "";
-    bool waitingForMessage = false;
+    bool collectingMessage = false;
+    unsigned long messageStartTime = 0;
 
-    // Parst die +CMT Header-Zeile
+    // Timeout: wenn nach der letzten Zeile keine neue kommt,
+    // ist die SMS komplett (500ms reicht, SIM800L sendet schnell)
+    const unsigned long MESSAGE_TIMEOUT_MS = 500;
+
     void parseHeader(const String& line) {
-        // Absendernummer extrahieren
         int firstQuote = line.indexOf('"');
         int secondQuote = line.indexOf('"', firstQuote + 1);
         if (firstQuote >= 0 && secondQuote > firstQuote) {
             currentSender = line.substring(firstQuote + 1, secondQuote);
         }
 
-        // Zeitstempel extrahieren (letztes Paar Anfuehrungszeichen)
         int lastQuote = line.lastIndexOf('"');
         int prevQuote = line.lastIndexOf('"', lastQuote - 1);
         if (prevQuote >= 0 && lastQuote > prevQuote) {
             currentTimestamp = line.substring(prevQuote + 1, lastQuote);
         }
 
-        waitingForMessage = true;
+        currentMessage = "";
+        collectingMessage = true;
+        messageStartTime = millis();
+    }
+
+    // Neue Zeile hinzufuegen
+    void addLine(const String& line) {
+        if (currentMessage.length() > 0) {
+            currentMessage += "\n";
+        }
+        currentMessage += CharsetConvert::convertSmsText(line);
+        messageStartTime = millis();
     }
 
     // Verarbeitet eingehende Zeilen vom SIM800L
+    // Gibt true zurueck wenn +CMT Header erkannt wurde
     bool processLine(const String& line) {
         if (line.startsWith("+CMT:")) {
             parseHeader(line);
             return false;
         }
 
-        if (waitingForMessage && line.length() > 0) {
-            currentMessage = line;
-            waitingForMessage = false;
-            return true; // Vollstaendige SMS empfangen
+        // Wenn wir eine SMS sammeln und eine neue AT-Antwort kommt,
+        // ist die SMS vorbei
+        if (collectingMessage && (line.startsWith("+") || line == "OK" || line == "ERROR")) {
+            collectingMessage = false;
+            return currentMessage.length() > 0;
         }
 
+        if (collectingMessage && line.length() > 0) {
+            addLine(line);
+        }
+
+        return false;
+    }
+
+    // Timeout pruefen - aufrufen im Loop
+    // Gibt true zurueck wenn eine SMS fertig gesammelt wurde
+    bool checkTimeout() {
+        if (collectingMessage && currentMessage.length() > 0 &&
+            millis() - messageStartTime > MESSAGE_TIMEOUT_MS) {
+            collectingMessage = false;
+            return true;
+        }
         return false;
     }
 }
@@ -432,6 +588,34 @@ void setup() {
     }
 }
 
+// Empfangene SMS verarbeiten: Sound + Druck
+void handleReceivedSMS() {
+    Serial.println();
+    Serial.println("=== NEUE SMS EMPFANGEN ===");
+    Serial.print("Von: ");
+    Serial.println(SMSParser::currentSender);
+    Serial.print("Zeit: ");
+    Serial.println(SMSParser::currentTimestamp);
+    Serial.print("Text: ");
+    Serial.println(SMSParser::currentMessage);
+    Serial.println("===========================");
+    Serial.println();
+
+    // Fax-Empfangssequenz abspielen!
+    FaxSound::receiveSequence();
+
+    // SMS drucken!
+    Printer::printMessage(
+        SMSParser::currentSender.c_str(),
+        SMSParser::currentTimestamp.c_str(),
+        SMSParser::currentMessage.c_str()
+    );
+
+    // Bestaetigungston
+    FaxSound::confirmTone();
+    StatusLED::flashFast(3);
+}
+
 // Buffer fuer serielle Daten vom SIM800L
 String simBuffer = "";
 
@@ -449,32 +633,8 @@ void loop() {
                 Serial.print("[SIM] ");
                 Serial.println(simBuffer);
 
-                // SMS parsen
                 if (SMSParser::processLine(simBuffer)) {
-                    Serial.println();
-                    Serial.println("=== NEUE SMS EMPFANGEN ===");
-                    Serial.print("Von: ");
-                    Serial.println(SMSParser::currentSender);
-                    Serial.print("Zeit: ");
-                    Serial.println(SMSParser::currentTimestamp);
-                    Serial.print("Text: ");
-                    Serial.println(SMSParser::currentMessage);
-                    Serial.println("===========================");
-                    Serial.println();
-
-                    // Fax-Empfangssequenz abspielen!
-                    FaxSound::receiveSequence();
-
-                    // SMS drucken!
-                    Printer::printMessage(
-                        SMSParser::currentSender.c_str(),
-                        SMSParser::currentTimestamp.c_str(),
-                        SMSParser::currentMessage.c_str()
-                    );
-
-                    // Bestaetigungston
-                    FaxSound::confirmTone();
-                    StatusLED::flashFast(3);
+                    handleReceivedSMS();
                 }
             }
 
@@ -482,6 +642,12 @@ void loop() {
         } else if (c != '\r') {
             simBuffer += c;
         }
+    }
+
+    // Mehrzeilige SMS: Timeout pruefen
+    // Wenn keine neue Zeile mehr kommt, ist die SMS komplett
+    if (SMSParser::checkTimeout()) {
+        handleReceivedSMS();
     }
 
     // Debug: Befehle vom Serial Monitor an SIM800L weiterleiten
