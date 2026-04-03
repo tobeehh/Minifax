@@ -10,8 +10,9 @@
 | LM2596 Buck-Converter (für SIM800L) | 2 EUR |
 | 5V/3A Netzteil | 5 EUR |
 | Piezo-Buzzer (passiv) | 1 EUR |
+| SSD1306 OLED 128x64 (I2C) | 3-5 EUR |
 | Thermopapier 58mm | 3 EUR |
-| **Gesamt** | **~30-40 EUR** |
+| **Gesamt** | **~35-45 EUR** |
 
 ## Verkabelung
 
@@ -27,6 +28,9 @@
                     |                   |
   Buzzer (+)  <--  | GPIO25            |
   Buzzer (-)  <--  | GND               |
+                    |                   |
+  OLED SDA    <->  | GPIO21 (SDA)      |
+  OLED SCL    <->  | GPIO22 (SCL)      |
                     |                   |
                     | GND ----+---------+--- GND (alle)
                     +---------+
@@ -57,3 +61,21 @@
 - Micro-SIM Format (je nach Modul)
 - Prepaid-SIM mit SMS-Empfang reicht
 - PIN-Abfrage vorher am Handy **deaktivieren**!
+
+## OTA (Over-The-Air Updates)
+
+Firmware kabellos flashen (wenn WLAN verbunden):
+
+```bash
+# PlatformIO
+pio run -t upload --upload-port minifax.local
+
+# Arduino IDE
+# Unter "Port" erscheint "minifax" als Netzwerk-Port
+```
+
+## OLED Display (SSD1306)
+
+- **I2C Adresse**: 0x3C (Standard), manche Module nutzen 0x3D
+- **VCC**: 3.3V vom ESP32 (NICHT 5V!)
+- Zeigt: GSM-Status, WiFi-IP, SMS-Zähler, letzte Nachricht

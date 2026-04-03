@@ -25,6 +25,13 @@
 #define BUZZER_PIN 25
 #define BUZZER_LEDC_CHANNEL 0
 
+// OLED Display (SSD1306 128x64, I2C)
+#define OLED_SDA_PIN 21  // Standard I2C SDA
+#define OLED_SCL_PIN 22  // Standard I2C SCL
+#define OLED_ADDR 0x3C   // I2C Adresse (0x3C oder 0x3D)
+#define OLED_WIDTH 128
+#define OLED_HEIGHT 64
+
 // ============================================
 // WLAN Einstellungen fuer WebUI
 // ============================================
@@ -44,5 +51,16 @@
 
 // Maximale SMS-Laenge die gedruckt wird
 #define MAX_SMS_LENGTH 160
+
+// ============================================
+// SPIFFS Einstellungen
+// ============================================
+#define SMS_LOG_PATH "/sms_log.json"
+#define SPIFFS_MAX_ENTRIES 50
+
+// ============================================
+// OTA Einstellungen
+// ============================================
+#define OTA_HOSTNAME "minifax"
 
 #endif // CONFIG_H

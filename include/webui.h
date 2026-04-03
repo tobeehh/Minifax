@@ -4,40 +4,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include "config.h"
-
-// ============================================
-// SMS Verlauf (Ringbuffer)
-// ============================================
-struct SmsEntry {
-    String sender;
-    String timestamp;
-    String message;
-    bool used = false;
-};
-
-namespace SmsHistory {
-    SmsEntry entries[SMS_HISTORY_SIZE];
-    int writeIndex = 0;
-    int totalCount = 0;
-
-    void add(const String& sender, const String& timestamp, const String& message) {
-        entries[writeIndex].sender = sender;
-        entries[writeIndex].timestamp = timestamp;
-        entries[writeIndex].message = message;
-        entries[writeIndex].used = true;
-        writeIndex = (writeIndex + 1) % SMS_HISTORY_SIZE;
-        totalCount++;
-    }
-
-    // Neueste zuerst iterieren
-    int newestIndex() {
-        return (writeIndex - 1 + SMS_HISTORY_SIZE) % SMS_HISTORY_SIZE;
-    }
-
-    int count() {
-        return totalCount < SMS_HISTORY_SIZE ? totalCount : SMS_HISTORY_SIZE;
-    }
-}
+#include "sms_storage.h"
 
 // ============================================
 // WebUI Server
@@ -152,6 +119,15 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
         }
         html += "</div>";
 
+        // Verlauf loeschen Button
+        if (SmsHistory::count() > 0) {
+            html += R"rawhtml(
+<div class="card">
+<form method="POST" action="/clear"><button type="submit" style="width:100%;background:#0f3460;color:#e04040;border:1px solid #e04040;border-radius:4px;padding:8px;font-family:inherit;cursor:pointer">VERLAUF LOESCHEN</button></form>
+</div>
+)rawhtml";
+        }
+
         // Refresh
         html += R"rawhtml(
 <div class="refresh"><a href="/">Aktualisieren</a></div>
@@ -188,6 +164,12 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
         server.send(400, "text/plain", "Fehler: Nummer und Text benoetigt");
     }
 
+    void handleClear() {
+        SmsHistory::clear();
+        server.sendHeader("Location", "/");
+        server.send(303);
+    }
+
     void handleNotFound() {
         server.sendHeader("Location", "/");
         server.send(302);
@@ -218,6 +200,7 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
 
             server.on("/", handleRoot);
             server.on("/send", HTTP_POST, handleSend);
+            server.on("/clear", HTTP_POST, handleClear);
             server.onNotFound(handleNotFound);
             server.begin();
 

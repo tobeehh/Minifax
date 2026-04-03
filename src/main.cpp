@@ -23,6 +23,9 @@
 #include <HardwareSerial.h>
 #include <WiFi.h>
 #include "config.h"
+#include "sms_storage.h"
+#include "oled_display.h"
+#include "ota_update.h"
 #include "webui.h"
 
 // ============================================
@@ -693,6 +696,13 @@ void setup() {
     FaxSound::init();
     StatusLED::flashFast(3);
 
+    // OLED Display initialisieren
+    OledDisplay::init();
+
+    // SPIFFS + SMS-Verlauf laden
+    SmsHistory::initStorage();
+    SmsHistory::loadFromStorage();
+
     // Drucker initialisieren
     Serial.println("[PRINTER] Initialisiere Thermodrucker...");
     Printer::init();
@@ -700,6 +710,7 @@ void setup() {
 
     // GSM initialisieren
     if (GSM::init()) {
+        OledDisplay::gsmConnected = true;
         StatusLED::flashFast(5);
         Serial.println();
         Serial.println("[MINIFAX] System bereit! Warte auf SMS...");
@@ -709,11 +720,19 @@ void setup() {
         WebUI::onSendSms = webSendSms;
         WebUI::init();
 
+        // OTA starten (nur wenn WLAN verbunden)
+        if (WebUI::connected) {
+            OtaUpdate::init();
+            OledDisplay::wifiConnected = true;
+            OledDisplay::ipAddress = WiFi.localIP().toString();
+        }
+
         // Testseite drucken beim Start
         Printer::printTestPage();
     } else {
         Serial.println("[MINIFAX] FEHLER: GSM-Modul nicht bereit!");
         Serial.println("[MINIFAX] Pruefe Verkabelung und SIM-Karte.");
+        OledDisplay::showError("GSM nicht bereit!\nVerkabelung pruefen");
         FaxSound::errorTone();
         // Schnelles Blinken als Fehleranzeige
         while (true) {
@@ -746,8 +765,14 @@ void handleReceivedSMS() {
     Serial.println("===========================");
     Serial.println();
 
-    // Im Verlauf speichern (fuer WebUI)
+    // Im Verlauf speichern (WebUI + SPIFFS)
     SmsHistory::add(SMSParser::currentSender, SMSParser::currentTimestamp, SMSParser::currentMessage);
+
+    // OLED: Empfangsanzeige
+    OledDisplay::lastSender = SMSParser::currentSender;
+    OledDisplay::lastMessage = SMSParser::currentMessage;
+    OledDisplay::smsCount = SmsHistory::totalCount;
+    OledDisplay::showReceiving(SMSParser::currentSender.c_str());
 
     // Fax-Empfangssequenz abspielen!
     FaxSound::receiveSequence();
@@ -800,6 +825,12 @@ void loop() {
 
     // WebUI Requests verarbeiten
     WebUI::update();
+
+    // OTA Updates pruefen
+    OtaUpdate::update();
+
+    // OLED Status aktualisieren
+    OledDisplay::update();
 
     // Debug: Befehle vom Serial Monitor an SIM800L weiterleiten
     while (Serial.available()) {
