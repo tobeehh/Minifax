@@ -21,7 +21,9 @@
 
 #include <Arduino.h>
 #include <HardwareSerial.h>
+#include <WiFi.h>
 #include "config.h"
+#include "webui.h"
 
 // ============================================
 // Hardware Serial Instanzen
@@ -312,6 +314,48 @@ namespace GSM {
     void deleteAllSMS() {
         sendAT("AT+CMGD=1,4");
     }
+
+    // SMS senden
+    bool sendSMS(const String& number, const String& text) {
+        Serial.print("[GSM] Sende SMS an ");
+        Serial.println(number);
+
+        String cmd = "AT+CMGS=\"" + number + "\"";
+        simSerial.println(cmd);
+        delay(500);
+
+        // Warten auf '>' Prompt
+        unsigned long start = millis();
+        bool gotPrompt = false;
+        while (millis() - start < 3000) {
+            if (simSerial.available()) {
+                char c = simSerial.read();
+                if (c == '>') {
+                    gotPrompt = true;
+                    break;
+                }
+            }
+        }
+
+        if (!gotPrompt) {
+            Serial.println("[GSM] FEHLER: Kein > Prompt");
+            simSerial.write(0x1B); // ESC zum Abbrechen
+            return false;
+        }
+
+        simSerial.print(text);
+        simSerial.write(0x1A); // Ctrl+Z zum Senden
+
+        // Auf Bestaetigung warten
+        String resp = sendAT("", 10000);
+        if (resp.indexOf("+CMGS:") >= 0) {
+            Serial.println("[GSM] SMS gesendet!");
+            return true;
+        }
+
+        Serial.println("[GSM] FEHLER: SMS senden fehlgeschlagen");
+        return false;
+    }
 }
 
 // ============================================
@@ -574,6 +618,10 @@ void setup() {
         Serial.println("[MINIFAX] System bereit! Warte auf SMS...");
         Serial.println();
 
+        // WebUI starten (WLAN)
+        WebUI::onSendSms = webSendSms;
+        WebUI::init();
+
         // Testseite drucken beim Start
         Printer::printTestPage();
     } else {
@@ -585,6 +633,16 @@ void setup() {
             StatusLED::flashFast(10);
             delay(1000);
         }
+    }
+}
+
+// SMS senden Callback fuer WebUI
+void webSendSms(const String& number, const String& text) {
+    if (GSM::sendSMS(number, text)) {
+        Serial.println("[WEBUI] SMS gesendet via WebUI");
+    } else {
+        Serial.println("[WEBUI] SMS senden fehlgeschlagen");
+        FaxSound::errorTone();
     }
 }
 
@@ -600,6 +658,9 @@ void handleReceivedSMS() {
     Serial.println(SMSParser::currentMessage);
     Serial.println("===========================");
     Serial.println();
+
+    // Im Verlauf speichern (fuer WebUI)
+    SmsHistory::add(SMSParser::currentSender, SMSParser::currentTimestamp, SMSParser::currentMessage);
 
     // Fax-Empfangssequenz abspielen!
     FaxSound::receiveSequence();
@@ -649,6 +710,9 @@ void loop() {
     if (SMSParser::checkTimeout()) {
         handleReceivedSMS();
     }
+
+    // WebUI Requests verarbeiten
+    WebUI::update();
 
     // Debug: Befehle vom Serial Monitor an SIM800L weiterleiten
     while (Serial.available()) {

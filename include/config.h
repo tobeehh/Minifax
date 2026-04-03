@@ -26,6 +26,16 @@
 #define BUZZER_LEDC_CHANNEL 0
 
 // ============================================
+// WLAN Einstellungen fuer WebUI
+// ============================================
+#define WIFI_SSID "DEIN_WLAN"
+#define WIFI_PASS "DEIN_PASSWORT"
+#define WEBSERVER_PORT 80
+
+// Maximale Anzahl gespeicherter SMS im Verlauf
+#define SMS_HISTORY_SIZE 20
+
+// ============================================
 // SMS Einstellungen
 // ============================================
 
