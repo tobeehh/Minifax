@@ -13,6 +13,7 @@
  *   ESP32 GPIO17 (TX) -> SIM800L RX
  *   ESP32 GPIO16 (RX) <- SIM800L TX
  *   ESP32 GPIO27 (TX) -> Drucker RX
+ *   ESP32 GPIO25       -> Piezo-Buzzer (+), anderes Bein -> GND
  *   SIM800L VCC -> 3.7-4.2V (LiPo oder Buck-Converter!)
  *   Drucker VCC -> 5-9V (separates Netzteil empfohlen)
  *   Alle GND verbinden
@@ -27,6 +28,93 @@
 // ============================================
 HardwareSerial simSerial(1);      // UART1 fuer SIM800L
 HardwareSerial printerSerial(2);  // UART2 fuer Thermodrucker
+
+// ============================================
+// Fax-Sound via Piezo-Buzzer (LEDC PWM)
+// ============================================
+namespace FaxSound {
+    void init() {
+        ledcAttachPin(BUZZER_PIN, BUZZER_LEDC_CHANNEL);
+    }
+
+    void tonePlay(uint16_t freq, uint16_t durationMs) {
+        ledcWriteTone(BUZZER_LEDC_CHANNEL, freq);
+        delay(durationMs);
+    }
+
+    void toneStop() {
+        ledcWriteTone(BUZZER_LEDC_CHANNEL, 0);
+    }
+
+    // CED-Ton: Empfaenger meldet sich (2100 Hz, ~2.5 Sekunden)
+    void cedTone() {
+        tonePlay(2100, 2500);
+        toneStop();
+        delay(200);
+    }
+
+    // V.21 Handshake: das klassische Fax-Kratzen
+    // Simuliert mit schnellen Frequenzwechseln
+    void handshakeNoise(uint16_t durationMs) {
+        unsigned long start = millis();
+        while (millis() - start < durationMs) {
+            // Zufaellige Frequenzen zwischen 300-3000 Hz
+            // simulieren das Modem-Handshake-Kratzen
+            uint16_t freq = 300 + (esp_random() % 2700);
+            tonePlay(freq, 20 + (esp_random() % 40));
+        }
+        toneStop();
+    }
+
+    // Komplette Fax-Empfangssequenz:
+    // 1. Klingeln (Ring)
+    // 2. CED-Antwortton (2100 Hz)
+    // 3. Handshake-Kratzen
+    void receiveSequence() {
+        Serial.println("[FAX] *brrring brrring*");
+
+        // Klingeln: zwei kurze hohe Toene
+        for (int ring = 0; ring < 2; ring++) {
+            tonePlay(1400, 200);
+            tonePlay(1800, 200);
+            tonePlay(1400, 200);
+            toneStop();
+            delay(400);
+        }
+        delay(300);
+
+        // CED-Antwortton
+        Serial.println("[FAX] CED-Ton (2100 Hz)");
+        cedTone();
+
+        // Handshake-Kratzen (~2 Sekunden)
+        Serial.println("[FAX] Handshake...");
+        handshakeNoise(2000);
+
+        // Kurze Stille vor dem Drucken
+        delay(300);
+        Serial.println("[FAX] Empfang OK, drucke...");
+    }
+
+    // Kurzer Bestaetigungston nach dem Drucken
+    void confirmTone() {
+        tonePlay(800, 100);
+        delay(50);
+        tonePlay(1200, 100);
+        delay(50);
+        tonePlay(1600, 150);
+        toneStop();
+    }
+
+    // Fehler-Ton
+    void errorTone() {
+        for (int i = 0; i < 3; i++) {
+            tonePlay(400, 200);
+            toneStop();
+            delay(100);
+        }
+    }
+}
 
 // ============================================
 // Thermodrucker ESC/POS Befehle
@@ -315,6 +403,7 @@ void setup() {
     Serial.println();
 
     StatusLED::init();
+    FaxSound::init();
     StatusLED::flashFast(3);
 
     // Drucker initialisieren
@@ -334,6 +423,7 @@ void setup() {
     } else {
         Serial.println("[MINIFAX] FEHLER: GSM-Modul nicht bereit!");
         Serial.println("[MINIFAX] Pruefe Verkabelung und SIM-Karte.");
+        FaxSound::errorTone();
         // Schnelles Blinken als Fehleranzeige
         while (true) {
             StatusLED::flashFast(10);
@@ -372,6 +462,9 @@ void loop() {
                     Serial.println("===========================");
                     Serial.println();
 
+                    // Fax-Empfangssequenz abspielen!
+                    FaxSound::receiveSequence();
+
                     // SMS drucken!
                     Printer::printMessage(
                         SMSParser::currentSender.c_str(),
@@ -379,6 +472,8 @@ void loop() {
                         SMSParser::currentMessage.c_str()
                     );
 
+                    // Bestaetigungston
+                    FaxSound::confirmTone();
                     StatusLED::flashFast(3);
                 }
             }

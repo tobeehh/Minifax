@@ -21,6 +21,10 @@
 // LED Pin fuer Status-Anzeige
 #define LED_PIN 2  // Onboard LED
 
+// Piezo-Buzzer Pin
+#define BUZZER_PIN 25
+#define BUZZER_LEDC_CHANNEL 0
+
 // ============================================
 // SMS Einstellungen
 // ============================================

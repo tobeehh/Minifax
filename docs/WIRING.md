@@ -9,6 +9,7 @@
 | 58mm Thermodrucker (TTL Seriell) | 10-15 EUR |
 | LM2596 Buck-Converter (für SIM800L) | 2 EUR |
 | 5V/3A Netzteil | 5 EUR |
+| Piezo-Buzzer (passiv) | 1 EUR |
 | Thermopapier 58mm | 3 EUR |
 | **Gesamt** | **~30-40 EUR** |
 
@@ -23,6 +24,9 @@
                     |                   |
   Drucker RX  <--  | GPIO27 (TX2)      |
   (Drucker TX) --> | GPIO26 (RX2)      |
+                    |                   |
+  Buzzer (+)  <--  | GPIO25            |
+  Buzzer (-)  <--  | GND               |
                     |                   |
                     | GND ----+---------+--- GND (alle)
                     +---------+
