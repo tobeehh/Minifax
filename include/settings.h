@@ -22,7 +22,8 @@ namespace Settings {
     bool faxSoundEnabled = true;
     bool printQrCode = true;
     bool autoPrint = true;
-    uint8_t buzzerVolume = 100; // 0-100 (PWM duty cycle %)
+    bool guestbookMode = false;  // Gaestebuch-Modus
+    uint8_t buzzerVolume = 100;  // 0-100 (PWM duty cycle %)
     String deviceName = "MINIFAX";
 
     const char* gsmModuleName() {
@@ -58,6 +59,7 @@ namespace Settings {
         faxSoundEnabled = doc["faxSound"] | true;
         printQrCode = doc["printQr"] | true;
         autoPrint = doc["autoPrint"] | true;
+        guestbookMode = doc["guestbook"] | false;
         buzzerVolume = doc["buzzerVol"] | 100;
         deviceName = doc["name"] | "MINIFAX";
 
@@ -72,6 +74,7 @@ namespace Settings {
         doc["faxSound"] = faxSoundEnabled;
         doc["printQr"] = printQrCode;
         doc["autoPrint"] = autoPrint;
+        doc["guestbook"] = guestbookMode;
         doc["buzzerVol"] = buzzerVolume;
         doc["name"] = deviceName;
 

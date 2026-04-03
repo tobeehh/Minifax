@@ -3,6 +3,7 @@
 
 #include <WiFi.h>
 #include <WebServer.h>
+#include <WiFiManager.h>
 #include "config.h"
 #include "sms_storage.h"
 #include "settings.h"
@@ -17,6 +18,7 @@ namespace WebUI {
 
     // Forward declarations - werden von main.cpp gesetzt
     void (*onSendSms)(const String& number, const String& text) = nullptr;
+    void (*onGuestbookEntry)(const String& name, const String& message) = nullptr;
 
     // HTML escapen gegen XSS
     String htmlEscape(const String& text) {
@@ -235,6 +237,12 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
         html += "<label class=\"toggle\"><input type=\"checkbox\" name=\"printQr\" value=\"1\"";
         if (Settings::printQrCode) html += " checked";
         html += "><span class=\"slider\"></span></label></div>";
+
+        html += "<div class=\"setting-row\"><span class=\"label\">Gaestebuch-Modus</span>";
+        html += "<label class=\"toggle\"><input type=\"checkbox\" name=\"guestbook\" value=\"1\"";
+        if (Settings::guestbookMode) html += " checked";
+        html += "><span class=\"slider\"></span></label></div>";
+        html += "<p class=\"note\">Gaestebuch: Jeder im WLAN kann unter /guestbook eine Nachricht hinterlassen die sofort gedruckt wird. Perfekt fuer Partys!</p>";
         html += "</div>";
 
         // Geraet
@@ -245,6 +253,24 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
 
         html += "<button type=\"submit\" class=\"save-btn\">SPEICHERN</button>";
         html += "</form>";
+
+        // WLAN (ausserhalb des Settings-Formulars)
+        html += "<div class=\"card\" style=\"margin-top:16px\"><h2>WLAN</h2>";
+        html += "<div class=\"setting-row\"><span class=\"label\">Verbunden mit</span><span style=\"color:#00ff88\">" + WiFi.SSID() + "</span></div>";
+        html += "<div class=\"setting-row\"><span class=\"label\">IP-Adresse</span><span style=\"color:#00ff88\">" + WiFi.localIP().toString() + "</span></div>";
+        html += "<div class=\"setting-row\"><span class=\"label\">Signalstaerke</span><span style=\"color:#00ff88\">" + String(WiFi.RSSI()) + " dBm</span></div>";
+        html += "</div>";
+
+        // WLAN Reset
+        html += R"rawhtml(
+<div class="card">
+<h2>WLAN ZURUECKSETZEN</h2>
+<p class="note" style="margin-bottom:8px">Loescht gespeicherte WLAN-Daten. Beim naechsten Start oeffnet sich der Setup-Hotspot "Minifax-Setup" um ein neues WLAN zu konfigurieren.</p>
+<form method="POST" action="/wifi-reset">
+<button type="submit" style="width:100%;background:#0f3460;color:#e04040;border:1px solid #e04040;border-radius:4px;padding:8px;font-family:inherit;cursor:pointer">WLAN ZURUECKSETZEN + NEUSTART</button>
+</form>
+</div>
+)rawhtml";
 
         html += R"rawhtml(
 <div class="card" style="margin-top:16px">
@@ -262,6 +288,62 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
         html += "</span></div></div>";
 
         html += "</body></html>";
+        return html;
+    }
+
+    // ============================================
+    // Gaestebuch Seite
+    // ============================================
+    String buildGuestbookPage(bool sent = false) {
+        String html = R"rawhtml(<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>)rawhtml";
+        html += htmlEscape(Settings::deviceName);
+        html += R"rawhtml( - Gaestebuch</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;max-width:500px;margin:0 auto;padding:16px;min-height:100vh;display:flex;flex-direction:column;justify-content:center}
+h1{text-align:center;font-size:2.2em;letter-spacing:6px;color:#fff;text-shadow:0 0 20px rgba(0,255,136,.4);margin:10px 0}
+.sub{text-align:center;color:#00ff88;font-size:1em;margin-bottom:24px}
+.card{background:#16213e;border:1px solid #0f3460;border-radius:12px;padding:20px;margin-bottom:16px}
+.card input,.card textarea{width:100%;background:#0a0a1a;color:#e0e0e0;border:1px solid #0f3460;border-radius:6px;padding:12px;font-family:inherit;font-size:1.1em;margin-bottom:12px}
+.card textarea{min-height:100px;resize:vertical}
+.card button{width:100%;background:#00ff88;color:#1a1a2e;border:none;border-radius:6px;padding:14px;font-family:inherit;font-size:1.2em;font-weight:bold;cursor:pointer;letter-spacing:3px}
+.card button:hover{background:#00cc6a}
+.success{background:#00ff88;color:#1a1a2e;padding:16px;border-radius:12px;text-align:center;margin-bottom:16px;font-size:1.1em}
+.success b{font-size:1.3em}
+.hint{text-align:center;color:#444;font-size:.8em;margin-top:12px}
+</style>
+</head>
+<body>
+)rawhtml";
+
+        html += "<h1>" + htmlEscape(Settings::deviceName) + "</h1>";
+        html += "<p class=\"sub\">Schreib eine Nachricht!</p>";
+
+        if (sent) {
+            html += R"rawhtml(
+<div class="success">
+<b>Gedruckt!</b><br>Deine Nachricht kommt gleich aus dem Drucker.
+</div>
+)rawhtml";
+        }
+
+        html += R"rawhtml(
+<div class="card">
+<form method="POST" action="/guestbook">
+<input type="text" name="name" placeholder="Dein Name" maxlength="30" required>
+<textarea name="msg" placeholder="Deine Nachricht..." maxlength="300" required></textarea>
+<button type="submit">DRUCKEN!</button>
+</form>
+</div>
+<p class="hint">Deine Nachricht wird sofort auf dem Mini-Fax ausgedruckt.</p>
+</body></html>
+)rawhtml";
+
         return html;
     }
 
@@ -307,12 +389,53 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
         Settings::faxSoundEnabled = server.hasArg("faxSound");
         Settings::autoPrint = server.hasArg("autoPrint");
         Settings::printQrCode = server.hasArg("printQr");
+        Settings::guestbookMode = server.hasArg("guestbook");
         if (server.hasArg("name") && server.arg("name").length() > 0) {
             Settings::deviceName = server.arg("name");
         }
 
         Settings::save();
         server.send(200, "text/html", buildSettingsPage(true));
+    }
+
+    void handleGuestbookGet() {
+        if (!Settings::guestbookMode) {
+            server.sendHeader("Location", "/");
+            server.send(302);
+            return;
+        }
+        server.send(200, "text/html", buildGuestbookPage(false));
+    }
+
+    void handleGuestbookPost() {
+        if (!Settings::guestbookMode) {
+            server.send(403, "text/plain", "Gaestebuch deaktiviert");
+            return;
+        }
+
+        if (server.hasArg("name") && server.hasArg("msg")) {
+            String name = server.arg("name");
+            String msg = server.arg("msg");
+
+            if (name.length() > 0 && msg.length() > 0 && onGuestbookEntry) {
+                onGuestbookEntry(name, msg);
+            }
+        }
+        server.send(200, "text/html", buildGuestbookPage(true));
+    }
+
+    void handleWifiReset() {
+        server.send(200, "text/html",
+            "<html><body style='background:#1a1a2e;color:#e0e0e0;font-family:monospace;text-align:center;padding:40px'>"
+            "<h1>WLAN zurueckgesetzt!</h1>"
+            "<p>Neustart in 3 Sekunden...</p>"
+            "<p>Verbinde dich dann mit dem Hotspot <b>Minifax-Setup</b></p>"
+            "</body></html>");
+        delay(1000);
+        WiFiManager wm;
+        wm.resetSettings();
+        delay(1000);
+        ESP.restart();
     }
 
     void handleNotFound() {
@@ -323,24 +446,40 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
     // ============================================
     // Init & Loop
     // ============================================
+    // Callback fuer OLED-Anzeige waehrend Config-Portal
+    void (*onConfigPortalStarted)(const char* apName) = nullptr;
+
     void init() {
-        Serial.print("[WIFI] Verbinde mit ");
-        Serial.print(WIFI_SSID);
+        WiFiManager wm;
 
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(WIFI_SSID, WIFI_PASS);
+        // Timeout: nach X Sekunden Config-Portal schliessen
+        // und ohne WLAN weiterlaufen (SMS geht trotzdem)
+        wm.setConfigPortalTimeout(WIFI_CONFIG_TIMEOUT);
 
-        int retries = 0;
-        while (WiFi.status() != WL_CONNECTED && retries < 40) {
-            delay(500);
-            Serial.print(".");
-            retries++;
+        // Dark Theme fuer das Config-Portal
+        wm.setClass("invert");
+
+        // Debug auf Serial
+        wm.setDebugOutput(true);
+
+        Serial.println("[WIFI] Starte WiFiManager...");
+        Serial.println("[WIFI] Falls kein WLAN gespeichert: Hotspot '" WIFI_AP_NAME "'");
+
+        // OLED Anzeige wenn Config-Portal startet
+        if (onConfigPortalStarted) {
+            onConfigPortalStarted(WIFI_AP_NAME);
         }
 
-        if (WiFi.status() == WL_CONNECTED) {
+        // autoConnect: versucht gespeichertes WLAN,
+        // oeffnet sonst Config-Portal als Access Point
+        bool wifiOk = wm.autoConnect(WIFI_AP_NAME);
+
+        if (wifiOk) {
             connected = true;
             Serial.println();
-            Serial.print("[WIFI] Verbunden! IP: ");
+            Serial.print("[WIFI] Verbunden mit: ");
+            Serial.println(WiFi.SSID());
+            Serial.print("[WIFI] IP: ");
             Serial.println(WiFi.localIP());
 
             server.on("/", handleRoot);
@@ -348,6 +487,9 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
             server.on("/clear", HTTP_POST, handleClear);
             server.on("/settings", HTTP_GET, handleSettingsGet);
             server.on("/settings", HTTP_POST, handleSettingsPost);
+            server.on("/wifi-reset", HTTP_POST, handleWifiReset);
+            server.on("/guestbook", HTTP_GET, handleGuestbookGet);
+            server.on("/guestbook", HTTP_POST, handleGuestbookPost);
             server.onNotFound(handleNotFound);
             server.begin();
 
@@ -355,8 +497,9 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
             Serial.println(WiFi.localIP());
         } else {
             Serial.println();
-            Serial.println("[WIFI] WARNUNG: Verbindung fehlgeschlagen!");
+            Serial.println("[WIFI] Kein WLAN konfiguriert/erreichbar.");
             Serial.println("[WIFI] WebUI nicht verfuegbar, SMS-Empfang funktioniert trotzdem.");
+            Serial.println("[WIFI] Neustart um Config-Portal erneut zu oeffnen.");
         }
     }
 

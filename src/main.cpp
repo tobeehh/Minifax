@@ -721,8 +721,12 @@ void setup() {
         Serial.println("[MINIFAX] System bereit! Warte auf SMS...");
         Serial.println();
 
-        // WebUI starten (WLAN)
+        // WebUI starten (WiFiManager)
         WebUI::onSendSms = webSendSms;
+        WebUI::onGuestbookEntry = handleGuestbookEntry;
+        WebUI::onConfigPortalStarted = [](const char* apName) {
+            OledDisplay::showConfigPortal(apName);
+        };
         WebUI::init();
 
         // OTA starten (nur wenn WLAN verbunden)
@@ -745,6 +749,66 @@ void setup() {
             delay(1000);
         }
     }
+}
+
+// Gaestebuch-Eintrag drucken
+void handleGuestbookEntry(const String& name, const String& message) {
+    Serial.println("[GAESTEBUCH] Neuer Eintrag von: " + name);
+
+    if (Settings::faxSoundEnabled) {
+        FaxSound::receiveSequence();
+    }
+
+    // Gaestebuch-Ausdruck
+    Printer::feed(1);
+    Printer::setAlign(1);
+    Printer::setDoubleHeight(true);
+    Printer::printLine(Settings::deviceName.c_str());
+    Printer::setDoubleHeight(false);
+    Printer::printLine("GAESTEBUCH");
+    Printer::setAlign(0);
+    Printer::feed(1);
+    Printer::printSeparator();
+
+    // Zeitstempel
+    unsigned long sec = millis() / 1000;
+    unsigned long h = sec / 3600;
+    unsigned long m = (sec % 3600) / 60;
+    char ts[16];
+    snprintf(ts, sizeof(ts), "%02lu:%02lu", h, m);
+    printerSerial.print(ts);
+    printerSerial.print(" - ");
+    Printer::setBold(true);
+    printerSerial.println(name.c_str());
+    Printer::setBold(false);
+
+    Printer::printSeparator();
+    Printer::feed(1);
+    Printer::printLine(message.c_str());
+    Printer::feed(1);
+    Printer::printSeparator();
+
+    // QR-Code zum Gaestebuch (damit naechster Gast auch schreiben kann)
+    if (Settings::printQrCode && WiFi.status() == WL_CONNECTED) {
+        Printer::feed(1);
+        Printer::setAlign(1);
+        Printer::printLine("Auch was schreiben?");
+        String gbUrl = "http://" + WiFi.localIP().toString() + "/guestbook";
+        Printer::printQR(gbUrl.c_str());
+    }
+
+    Printer::feed(3);
+
+    if (Settings::faxSoundEnabled) {
+        FaxSound::confirmTone();
+    }
+
+    // Im Verlauf speichern
+    SmsHistory::add(name, "Gaestebuch", message);
+
+    OledDisplay::lastSender = name;
+    OledDisplay::lastMessage = message;
+    OledDisplay::smsCount = SmsHistory::totalCount;
 }
 
 // SMS senden Callback fuer WebUI

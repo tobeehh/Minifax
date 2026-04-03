@@ -33,11 +33,14 @@
 #define OLED_HEIGHT 64
 
 // ============================================
-// WLAN Einstellungen fuer WebUI
+// WLAN Einstellungen
 // ============================================
-#define WIFI_SSID "DEIN_WLAN"
-#define WIFI_PASS "DEIN_PASSWORT"
 #define WEBSERVER_PORT 80
+
+// WiFiManager: Name des Config-Hotspots
+#define WIFI_AP_NAME "Minifax-Setup"
+// Timeout fuer Config-Portal in Sekunden (0 = kein Timeout)
+#define WIFI_CONFIG_TIMEOUT 180
 
 // Maximale Anzahl gespeicherter SMS im Verlauf
 #define SMS_HISTORY_SIZE 20

@@ -132,6 +132,25 @@ namespace OledDisplay {
         display.display();
     }
 
+    void showConfigPortal(const char* apName) {
+        if (!available) return;
+
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setCursor(0, 0);
+        display.println("WLAN SETUP");
+        display.drawLine(0, 10, OLED_WIDTH, 10, SSD1306_WHITE);
+        display.setCursor(0, 16);
+        display.println("Verbinde mit WLAN:");
+        display.setTextSize(2);
+        display.setCursor(0, 30);
+        display.println(apName);
+        display.setTextSize(1);
+        display.setCursor(0, 52);
+        display.println("Dann: 192.168.4.1");
+        display.display();
+    }
+
     void showError(const char* msg) {
         if (!available) return;
 
