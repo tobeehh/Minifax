@@ -22,9 +22,12 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include "config.h"
 #include "settings.h"
 #include "sms_storage.h"
+#include "error_log.h"
+#include "watchdog.h"
 #include "oled_display.h"
 #include "ota_update.h"
 #include "emoji_replace.h"
@@ -707,6 +710,7 @@ void setup() {
     SmsHistory::initStorage();
     Settings::load();
     SmsHistory::loadFromStorage();
+    ErrorLog::logStartup();
 
     Serial.print("[MINIFAX] GSM-Modul: ");
     Serial.println(Settings::gsmModuleName());
@@ -719,6 +723,7 @@ void setup() {
     // GSM initialisieren
     if (GSM::init()) {
         OledDisplay::gsmConnected = true;
+        ErrorLog::info("GSM", "Initialisiert");
         StatusLED::flashFast(5);
         Serial.println();
         Serial.println("[MINIFAX] System bereit! Warte auf SMS...");
@@ -733,25 +738,54 @@ void setup() {
         };
         WebUI::init();
 
-        // OTA starten (nur wenn WLAN verbunden)
+        // OTA + mDNS + Telegram (nur wenn WLAN verbunden)
         if (WebUI::connected) {
             OtaUpdate::init();
+            ErrorLog::info("WIFI", ("IP: " + WiFi.localIP().toString()).c_str());
+
+            // mDNS: http://minifax.local
+            if (MDNS.begin(OTA_HOSTNAME)) {
+                MDNS.addService("http", "tcp", 80);
+                Serial.println("[MDNS] http://" OTA_HOSTNAME ".local");
+                ErrorLog::info("MDNS", OTA_HOSTNAME ".local aktiv");
+            }
+
             OledDisplay::wifiConnected = true;
-            OledDisplay::ipAddress = WiFi.localIP().toString();
+            OledDisplay::ipAddress = String(OTA_HOSTNAME) + ".local";
 
             // Telegram Bot starten
             TelegramBot::onMessage = handleTelegramMessage;
             TelegramBot::onPhoto = handleTelegramPhoto;
             if (TelegramBot::init()) {
                 OledDisplay::telegramConnected = true;
+                ErrorLog::info("TG", ("Bot @" + TelegramBot::botUsername).c_str());
             }
         }
+
+        // Watchdog konfigurieren
+        Watchdog::gsmHealthCheck = []() -> bool {
+            String resp = GSM::sendAT("AT", 1000);
+            return resp.indexOf("OK") >= 0;
+        };
+        Watchdog::gsmReset = []() {
+            ErrorLog::warn("GSM", "Reset und Neuinitialisierung...");
+            GSM::init();
+            OledDisplay::gsmConnected = GSM::initialized;
+        };
+        Watchdog::onWifiReconnected = []() {
+            OledDisplay::wifiConnected = true;
+            OledDisplay::ipAddress = String(OTA_HOSTNAME) + ".local";
+            // mDNS neu starten
+            MDNS.begin(OTA_HOSTNAME);
+            MDNS.addService("http", "tcp", 80);
+        };
 
         // Testseite drucken beim Start
         Printer::printTestPage();
     } else {
         Serial.println("[MINIFAX] FEHLER: GSM-Modul nicht bereit!");
         Serial.println("[MINIFAX] Pruefe Verkabelung und SIM-Karte.");
+        ErrorLog::error("GSM", "Initialisierung fehlgeschlagen!");
         OledDisplay::showError("GSM nicht bereit!\nVerkabelung pruefen");
         FaxSound::errorTone();
         // Schnelles Blinken als Fehleranzeige
@@ -1035,6 +1069,9 @@ void loop() {
 
     // OLED Status aktualisieren
     OledDisplay::update();
+
+    // Watchdog: WiFi-Reconnect + GSM-Health
+    Watchdog::update();
 
     // Debug: Befehle vom Serial Monitor an SIM800L weiterleiten
     while (Serial.available()) {

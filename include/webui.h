@@ -7,6 +7,7 @@
 #include "config.h"
 #include "sms_storage.h"
 #include "settings.h"
+#include "error_log.h"
 
 // ============================================
 // WebUI Server
@@ -95,7 +96,7 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
 <body>
 <h1>MINIFAX</h1>
 <p class="subtitle">Mini-Faxgeraet &middot; ESP32</p>
-<div class="nav"><a href="/">Startseite</a><a href="/settings">Einstellungen</a></div>
+<div class="nav"><a href="/">Start</a><a href="/settings">Settings</a><a href="/log">Log</a></div>
 )rawhtml";
 
         // Status Card
@@ -104,7 +105,7 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
         html += "<div class=\"status-item\"><span class=\"label\">Uptime</span><span class=\"value\">";
         html += String(h) + "h " + String(m) + "m " + String(s) + "s</span></div>";
         html += "<div class=\"status-item\"><span class=\"label\">SMS</span><span class=\"value\">" + String(SmsHistory::totalCount) + " empfangen</span></div>";
-        html += "<div class=\"status-item\"><span class=\"label\">WLAN</span><span class=\"value\">" + WiFi.localIP().toString() + "</span></div>";
+        html += "<div class=\"status-item\"><span class=\"label\">WLAN</span><span class=\"value\">" + String(OTA_HOSTNAME) + ".local</span></div>";
         html += "<div class=\"status-item\"><span class=\"label\">Modul</span><span class=\"value\">" + String(Settings::gsmModuleName()) + "</span></div>";
         html += "</div></div>";
 
@@ -211,7 +212,7 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
 <body>
 <h1>MINIFAX</h1>
 <p class="subtitle">Einstellungen</p>
-<div class="nav"><a href="/">Startseite</a><a href="/settings">Einstellungen</a></div>
+<div class="nav"><a href="/">Start</a><a href="/settings">Settings</a><a href="/log">Log</a></div>
 )rawhtml";
 
         if (saved) {
@@ -488,6 +489,82 @@ h1{text-align:center;font-size:2.2em;letter-spacing:6px;color:#fff;text-shadow:0
         }
     }
 
+    void handleLogPage() {
+        String html = R"rawhtml(<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MINIFAX - Log</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;max-width:700px;margin:0 auto;padding:16px}
+h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0 0 20px rgba(0,255,136,.4);margin:20px 0}
+.subtitle{text-align:center;color:#666;font-size:.8em;margin-bottom:24px}
+.nav{text-align:center;margin-bottom:16px}
+.nav a{color:#00ff88;text-decoration:none;margin:0 12px;font-size:.9em}
+.nav a:hover{text-decoration:underline}
+.card{background:#16213e;border:1px solid #0f3460;border-radius:8px;padding:16px;margin-bottom:16px}
+.card h2{color:#00ff88;font-size:1em;margin-bottom:12px;letter-spacing:2px}
+.log-box{background:#0a0a1a;border:1px solid #0f3460;border-radius:4px;padding:12px;font-size:.8em;white-space:pre-wrap;word-break:break-all;max-height:500px;overflow-y:auto;line-height:1.6}
+.log-box .ERR{color:#e04040}
+.log-box .WARN{color:#e0a040}
+.log-box .INFO{color:#00ff88}
+.status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.status-item{display:flex;justify-content:space-between}
+.status-item .label{color:#888}
+.status-item .value{color:#00ff88}
+</style>
+</head>
+<body>
+<h1>MINIFAX</h1>
+<p class="subtitle">System-Log</p>
+<div class="nav"><a href="/">Start</a><a href="/settings">Settings</a><a href="/log">Log</a></div>
+)rawhtml";
+
+        // System-Info
+        html += "<div class=\"card\"><h2>SYSTEM</h2><div class=\"status-grid\">";
+        html += "<div class=\"status-item\"><span class=\"label\">Free Heap</span><span class=\"value\">"
+              + String(ESP.getFreeHeap() / 1024) + " KB</span></div>";
+        html += "<div class=\"status-item\"><span class=\"label\">Min Heap</span><span class=\"value\">"
+              + String(ESP.getMinFreeHeap() / 1024) + " KB</span></div>";
+
+        unsigned long sec = millis() / 1000;
+        html += "<div class=\"status-item\"><span class=\"label\">Uptime</span><span class=\"value\">"
+              + String(sec / 3600) + "h " + String((sec % 3600) / 60) + "m</span></div>";
+        html += "<div class=\"status-item\"><span class=\"label\">WiFi RSSI</span><span class=\"value\">"
+              + String(WiFi.RSSI()) + " dBm</span></div>";
+        html += "</div></div>";
+
+        // Log-Eintraege
+        html += "<div class=\"card\"><h2>LOG</h2><div class=\"log-box\">";
+        String logContent = ErrorLog::readAll();
+        // ERR/WARN/INFO farbig markieren
+        logContent.replace("[ERR ]", "<span class=\"ERR\">[ERR ]</span>");
+        logContent.replace("[WARN]", "<span class=\"WARN\">[WARN]</span>");
+        logContent.replace("[INFO]", "<span class=\"INFO\">[INFO]</span>");
+        html += logContent;
+        html += "</div></div>";
+
+        // Buttons
+        html += R"rawhtml(
+<div style="display:flex;gap:8px">
+<form method="GET" action="/log" style="flex:1"><button type="submit" style="width:100%;background:#0f3460;color:#00ff88;border:1px solid #0f3460;border-radius:4px;padding:8px;font-family:inherit;cursor:pointer">AKTUALISIEREN</button></form>
+<form method="POST" action="/log-clear" style="flex:1"><button type="submit" style="width:100%;background:#0f3460;color:#e04040;border:1px solid #e04040;border-radius:4px;padding:8px;font-family:inherit;cursor:pointer">LOG LOESCHEN</button></form>
+</div>
+</body></html>
+)rawhtml";
+
+        server.send(200, "text/html", html);
+    }
+
+    void handleLogClear() {
+        ErrorLog::clear();
+        ErrorLog::info("SYS", "Log geloescht via WebUI");
+        server.sendHeader("Location", "/log");
+        server.send(303);
+    }
+
     void handleGuestbookGet() {
         if (!Settings::guestbookMode) {
             server.sendHeader("Location", "/");
@@ -578,6 +655,8 @@ h1{text-align:center;font-size:2.2em;letter-spacing:6px;color:#fff;text-shadow:0
             server.on("/settings", HTTP_GET, handleSettingsGet);
             server.on("/settings", HTTP_POST, handleSettingsPost);
             server.on("/wifi-reset", HTTP_POST, handleWifiReset);
+            server.on("/log", HTTP_GET, handleLogPage);
+            server.on("/log-clear", HTTP_POST, handleLogClear);
             server.on("/upload", HTTP_POST, handleUploadDone, handleUploadData);
             server.on("/guestbook", HTTP_GET, handleGuestbookGet);
             server.on("/guestbook", HTTP_POST, handleGuestbookPost);
