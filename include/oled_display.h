@@ -17,6 +17,7 @@ namespace OledDisplay {
     String signalStrength = "?";
     String ipAddress = "---";
     int smsCount = 0;
+    bool telegramConnected = false;
     String lastSender = "";
     String lastMessage = "";
     bool wifiConnected = false;
@@ -76,8 +77,8 @@ namespace OledDisplay {
         display.setCursor(0, 14);
         display.print("GSM:");
         display.print(gsmConnected ? "OK" : "--");
-        display.print(" Sig:");
-        display.print(signalStrength);
+        display.print(" TG:");
+        display.print(telegramConnected ? "OK" : "--");
 
         display.setCursor(0, 24);
         display.print("WiFi:");

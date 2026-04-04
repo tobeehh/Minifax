@@ -26,6 +26,11 @@ namespace Settings {
     uint8_t buzzerVolume = 100;  // 0-100 (PWM duty cycle %)
     String deviceName = "MINIFAX";
 
+    // Telegram Bot
+    bool telegramEnabled = false;
+    String telegramToken = "";
+    String telegramChatId = "";  // Wird automatisch bei erster Nachricht gesetzt
+
     const char* gsmModuleName() {
         switch (gsmModule) {
             case GSM_SIM800L:  return "SIM800L (2G)";
@@ -62,6 +67,9 @@ namespace Settings {
         guestbookMode = doc["guestbook"] | false;
         buzzerVolume = doc["buzzerVol"] | 100;
         deviceName = doc["name"] | "MINIFAX";
+        telegramEnabled = doc["tgEnabled"] | false;
+        telegramToken = doc["tgToken"] | "";
+        telegramChatId = doc["tgChatId"] | "";
 
         Serial.print("[SETTINGS] Geladen. GSM-Modul: ");
         Serial.println(gsmModuleName());
@@ -77,6 +85,9 @@ namespace Settings {
         doc["guestbook"] = guestbookMode;
         doc["buzzerVol"] = buzzerVolume;
         doc["name"] = deviceName;
+        doc["tgEnabled"] = telegramEnabled;
+        doc["tgToken"] = telegramToken;
+        doc["tgChatId"] = telegramChatId;
 
         File file = SPIFFS.open(SETTINGS_PATH, "w");
         if (!file) {

@@ -29,6 +29,7 @@
 #include "ota_update.h"
 #include "emoji_replace.h"
 #include "image_print.h"
+#include "telegram_bot.h"
 #include "webui.h"
 
 // ============================================
@@ -737,6 +738,13 @@ void setup() {
             OtaUpdate::init();
             OledDisplay::wifiConnected = true;
             OledDisplay::ipAddress = WiFi.localIP().toString();
+
+            // Telegram Bot starten
+            TelegramBot::onMessage = handleTelegramMessage;
+            TelegramBot::onPhoto = handleTelegramPhoto;
+            if (TelegramBot::init()) {
+                OledDisplay::telegramConnected = true;
+            }
         }
 
         // Testseite drucken beim Start
@@ -751,6 +759,82 @@ void setup() {
             StatusLED::flashFast(10);
             delay(1000);
         }
+    }
+}
+
+// Telegram-Nachricht empfangen und drucken
+void handleTelegramMessage(const String& sender, const String& text) {
+    Serial.println("[TG] Drucke Nachricht von " + sender);
+
+    // Im Verlauf speichern
+    SmsHistory::add(sender, "Telegram", text);
+
+    OledDisplay::lastSender = sender;
+    OledDisplay::lastMessage = text;
+    OledDisplay::smsCount = SmsHistory::totalCount;
+    OledDisplay::showReceiving(sender.c_str());
+
+    if (Settings::faxSoundEnabled) {
+        FaxSound::receiveSequence();
+    }
+
+    if (Settings::autoPrint) {
+        String printText = EmojiReplace::process(text);
+        Printer::printMessage(
+            sender.c_str(),
+            "Telegram",
+            printText.c_str()
+        );
+    }
+
+    if (Settings::faxSoundEnabled) {
+        FaxSound::confirmTone();
+    }
+    StatusLED::flashFast(3);
+}
+
+// Telegram-Bild empfangen und drucken
+void handleTelegramPhoto(const String& sender, const uint8_t* data, int len) {
+    Serial.printf("[TG] Bild von %s: %d Bytes\n", sender.c_str(), len);
+
+    OledDisplay::lastSender = sender;
+    OledDisplay::lastMessage = "[Bild]";
+    OledDisplay::smsCount = SmsHistory::totalCount;
+    OledDisplay::showReceiving(sender.c_str());
+
+    if (Settings::faxSoundEnabled) {
+        FaxSound::receiveSequence();
+    }
+
+    Printer::feed(1);
+    Printer::setAlign(1);
+    Printer::setDoubleHeight(true);
+    Printer::printLine(Settings::deviceName.c_str());
+    Printer::setDoubleHeight(false);
+    Printer::setAlign(0);
+    Printer::printSeparator();
+
+    printerSerial.print("Telegram >>> ");
+    Printer::printLine(sender.c_str());
+    Printer::printSeparator();
+    Printer::feed(1);
+
+    // Telegram sendet JPEG - wir brauchen einen Decoder
+    // Fuer jetzt: Info drucken dass das Bild empfangen wurde
+    // TODO: JPEG-Decoder einbauen (z.B. TJpg_Decoder)
+    Printer::setAlign(1);
+    Printer::printLine("[Bild empfangen]");
+    Printer::printLine("JPEG-Druck in Arbeit");
+    Printer::setAlign(0);
+
+    Printer::feed(1);
+    Printer::printSeparator();
+    Printer::feed(3);
+
+    SmsHistory::add(sender, "Telegram", "[Bild]");
+
+    if (Settings::faxSoundEnabled) {
+        FaxSound::confirmTone();
     }
 }
 
@@ -945,6 +1029,9 @@ void loop() {
 
     // OTA Updates pruefen
     OtaUpdate::update();
+
+    // Telegram Bot Updates
+    TelegramBot::update();
 
     // OLED Status aktualisieren
     OledDisplay::update();

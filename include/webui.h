@@ -231,6 +231,29 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
         html += "<p class=\"note\">SIM800L: 2G, guenstig (~5&euro;). SIM7000G/SIM7600: 4G, zukunftssicher (~15-20&euro;). Gleiche Pins, gleiche AT-Befehle. Nach Wechsel: Neustart noetig.</p>";
         html += "</div>";
 
+        // Telegram
+        html += "<div class=\"card\"><h2>TELEGRAM BOT</h2>";
+        html += "<div class=\"setting-row\"><span class=\"label\">Telegram aktiv</span>";
+        html += "<label class=\"toggle\"><input type=\"checkbox\" name=\"tgEnabled\" value=\"1\"";
+        if (Settings::telegramEnabled) html += " checked";
+        html += "><span class=\"slider\"></span></label></div>";
+
+        html += "<div class=\"setting-row\"><span class=\"label\">Bot-Token</span>";
+        html += "<input type=\"text\" name=\"tgToken\" value=\"" + htmlEscape(Settings::telegramToken)
+              + "\" placeholder=\"123456:ABC-DEF...\" style=\"width:220px;font-size:.8em\"></div>";
+
+        html += "<div class=\"setting-row\"><span class=\"label\">Chat-ID</span><span style=\"color:#00ff88\">";
+        html += Settings::telegramChatId.length() > 0 ? htmlEscape(Settings::telegramChatId) : "(wird automatisch gesetzt)";
+        html += "</span></div>";
+
+        html += "<p class=\"note\">1. @BotFather auf Telegram anschreiben<br>"
+                "2. /newbot &rarr; Name + Username vergeben<br>"
+                "3. Token hier eintragen, speichern, Neustart<br>"
+                "4. Dem Bot eine Nachricht schreiben &rarr; fertig!<br><br>"
+                "Empfaengt Text + Bilder. Bilder werden als Dithering-Druck ausgegeben. "
+                "Befehle: /start, /status</p>";
+        html += "</div>";
+
         // Sound
         html += "<div class=\"card\"><h2>SOUND</h2>";
         html += "<div class=\"setting-row\"><span class=\"label\">Fax-Sound</span>";
@@ -399,6 +422,15 @@ h1{text-align:center;font-size:2.2em;letter-spacing:6px;color:#fff;text-shadow:0
 
     void handleSettingsPost() {
         Settings::gsmModule = (Settings::GsmModule)server.arg("gsm").toInt();
+        Settings::telegramEnabled = server.hasArg("tgEnabled");
+        if (server.hasArg("tgToken")) {
+            String newToken = server.arg("tgToken");
+            newToken.trim();
+            if (newToken != Settings::telegramToken) {
+                Settings::telegramToken = newToken;
+                Settings::telegramChatId = ""; // Reset bei neuem Token
+            }
+        }
         Settings::faxSoundEnabled = server.hasArg("faxSound");
         Settings::autoPrint = server.hasArg("autoPrint");
         Settings::printQrCode = server.hasArg("printQr");
