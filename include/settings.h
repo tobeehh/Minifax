@@ -23,6 +23,7 @@ namespace Settings {
     bool printQrCode = true;
     bool autoPrint = true;
     bool guestbookMode = false;  // Gaestebuch-Modus
+    bool printStartCard = true;  // Visitenkarte beim Start drucken
     uint8_t buzzerVolume = 100;  // 0-100 (PWM duty cycle %)
     String deviceName = "MINIFAX";
 
@@ -65,6 +66,7 @@ namespace Settings {
         printQrCode = doc["printQr"] | true;
         autoPrint = doc["autoPrint"] | true;
         guestbookMode = doc["guestbook"] | false;
+        printStartCard = doc["startCard"] | true;
         buzzerVolume = doc["buzzerVol"] | 100;
         deviceName = doc["name"] | "MINIFAX";
         telegramEnabled = doc["tgEnabled"] | false;
@@ -83,6 +85,7 @@ namespace Settings {
         doc["printQr"] = printQrCode;
         doc["autoPrint"] = autoPrint;
         doc["guestbook"] = guestbookMode;
+        doc["startCard"] = printStartCard;
         doc["buzzerVol"] = buzzerVolume;
         doc["name"] = deviceName;
         doc["tgEnabled"] = telegramEnabled;

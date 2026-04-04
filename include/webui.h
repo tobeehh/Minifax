@@ -275,6 +275,12 @@ h1{text-align:center;font-size:2.5em;letter-spacing:8px;color:#fff;text-shadow:0
         if (Settings::printQrCode) html += " checked";
         html += "><span class=\"slider\"></span></label></div>";
 
+        html += "<div class=\"setting-row\"><span class=\"label\">Visitenkarte beim Start</span>";
+        html += "<label class=\"toggle\"><input type=\"checkbox\" name=\"startCard\" value=\"1\"";
+        if (Settings::printStartCard) html += " checked";
+        html += "><span class=\"slider\"></span></label></div>";
+        html += "<p class=\"note\">Druckt beim Einschalten eine Karte mit QR-Code zur WebUI. Praktisch zum Aufhaengen.</p>";
+
         html += "<div class=\"setting-row\"><span class=\"label\">Gaestebuch-Modus</span>";
         html += "<label class=\"toggle\"><input type=\"checkbox\" name=\"guestbook\" value=\"1\"";
         if (Settings::guestbookMode) html += " checked";
@@ -436,6 +442,7 @@ h1{text-align:center;font-size:2.2em;letter-spacing:6px;color:#fff;text-shadow:0
         Settings::autoPrint = server.hasArg("autoPrint");
         Settings::printQrCode = server.hasArg("printQr");
         Settings::guestbookMode = server.hasArg("guestbook");
+        Settings::printStartCard = server.hasArg("startCard");
         if (server.hasArg("name") && server.arg("name").length() > 0) {
             Settings::deviceName = server.arg("name");
         }

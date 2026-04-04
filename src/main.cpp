@@ -301,6 +301,51 @@ namespace Printer {
     void printTestPage() {
         printMessage("+4915112345678", "03.04.26 12:00", "Testdruck - Minifax funktioniert!");
     }
+
+    // Visitenkarte mit QR-Code zur WebUI
+    void printStartCard() {
+        feed(2);
+        setAlign(1); // zentriert
+        setDoubleHeight(true);
+        printLine(Settings::deviceName.c_str());
+        setDoubleHeight(false);
+        feed(1);
+
+        printSeparator();
+        feed(1);
+
+        printLine("Schick mir eine Nachricht!");
+        printLine("Ich drucke sie sofort aus.");
+        feed(1);
+
+        // WebUI QR-Code
+        if (WiFi.status() == WL_CONNECTED) {
+            String url = "http://" + String(OTA_HOSTNAME) + ".local";
+            printLine("WebUI:");
+            printQR(url.c_str());
+            feed(1);
+            setBold(true);
+            printLine(url.c_str());
+            setBold(false);
+            feed(1);
+        }
+
+        // Gaestebuch QR wenn aktiv
+        if (Settings::guestbookMode && WiFi.status() == WL_CONNECTED) {
+            String gbUrl = "http://" + String(OTA_HOSTNAME) + ".local/guestbook";
+            printLine("Gaestebuch:");
+            printQR(gbUrl.c_str());
+            feed(1);
+            setBold(true);
+            printLine(gbUrl.c_str());
+            setBold(false);
+            feed(1);
+        }
+
+        printSeparator();
+        setAlign(0);
+        feed(3);
+    }
 }
 
 // ============================================
@@ -780,8 +825,10 @@ void setup() {
             MDNS.addService("http", "tcp", 80);
         };
 
-        // Testseite drucken beim Start
-        Printer::printTestPage();
+        // Visitenkarte oder Testseite beim Start
+        if (Settings::printStartCard) {
+            Printer::printStartCard();
+        }
     } else {
         Serial.println("[MINIFAX] FEHLER: GSM-Modul nicht bereit!");
         Serial.println("[MINIFAX] Pruefe Verkabelung und SIM-Karte.");
